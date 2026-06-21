@@ -2,24 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { format } from "date-fns";
-import type { DateRange } from "react-day-picker";
 import {
   type ColumnDef,
   flexRender,
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { CalendarIcon, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
 import {
   Select,
   SelectContent,
@@ -40,11 +32,11 @@ import {
   useFantasyConfig,
   AVAILABLE_SEASONS,
   type ScoringWeights,
-  type DateRangeState,
+  type LeagueSettings,
   type Season,
 } from "@/context/FantasyContext";
-import { useLeaderboard } from "@/hooks/use-leaderboard";
-import type { BasePlayerRecord } from "@/types/fantasy";
+import { useAuctionValues } from "@/hooks/use-auction-values";
+import type { PlayerAuctionRecord } from "@/types/fantasy";
 
 const LIMIT = 50;
 
@@ -53,66 +45,65 @@ const WEIGHT_FIELDS: (keyof ScoringWeights)[] = [
   "OREB", "DREB", "REB", "AST", "STL", "BLK", "TOV", "PF", "PTS",
 ];
 
-// ---------------------------------------------------------------------------
-// Date helpers — context stores "YYYY-MM-DD" strings, the Calendar widget
-// works in local Date objects, so we convert at the boundary.
-// ---------------------------------------------------------------------------
+// Mirrors PrecisionAuctionConfig in main.py. `kind` controls whether the
+// input parses with parseInt or parseFloat — pydantic's lax mode would
+// accept either, but keeping team/roster counts as clean integers avoids
+// confusing fractional values in the UI.
+const LEAGUE_SETTING_FIELDS: {
+  key: keyof LeagueSettings;
+  label: string;
+  step: string;
+  kind: "int" | "float";
+}[] = [
+  { key: "num_teams", label: "Teams", step: "1", kind: "int" },
+  { key: "roster_size", label: "Roster Size", step: "1", kind: "int" },
+  { key: "total_budget_per_team", label: "Budget / Team", step: "1", kind: "float" },
+  { key: "regular_weeks", label: "Regular Weeks", step: "1", kind: "int" },
+  { key: "playoff_weeks", label: "Playoff Weeks", step: "1", kind: "int" },
+  { key: "post_season_weightage", label: "Playoff Weight", step: "0.1", kind: "float" },
+];
 
-function parseISODate(value: string): Date {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function toApiDateString(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function contextRangeToPicker(range: DateRangeState): DateRange | undefined {
-  if (!range.startDate) return undefined;
-  return {
-    from: parseISODate(range.startDate),
-    to: range.endDate ? parseISODate(range.endDate) : undefined,
-  };
-}
-
-export default function HomePage() {
+export default function AuctionPage() {
   const {
     season,
     setSeason,
     weights,
     setWeight,
-    dateRange,
-    setDateRange,
-    clearDateRange,
+    leagueSettings,
+    setLeagueSetting,
     appliedConfig,
     generationCount,
     generate,
   } = useFantasyConfig();
 
   const [offset, setOffset] = useState(0);
-  const [sortBy, setSortBy] = useState<"total" | "avg">("total");
 
-  // Season and date-range edits only take effect once `generate()` snapshots
-  // them into `appliedConfig` (bumping `generationCount`), so offset only
-  // needs to reset off generationCount + the locally-immediate sortBy state.
+  // Same edge-case rule as the Home Page: changing inputs alone does nothing
+  // until Generate snapshots them into appliedConfig — so offset resets off
+  // generationCount, not off the live draft values.
   useEffect(() => {
     setOffset(0);
-  }, [generationCount, sortBy]);
+  }, [generationCount]);
 
   const hasGenerated = Boolean(appliedConfig);
 
-  const { data, isPending, isFetching, isError, error } = useLeaderboard({
+  const { data, isPending, isFetching, isError, error } = useAuctionValues({
     appliedConfig,
     generationCount,
     limit: LIMIT,
     offset,
-    sortBy,
   });
 
-  const columns = useMemo<ColumnDef<BasePlayerRecord>[]>(
+  function handleLeagueSettingChange(
+    key: keyof LeagueSettings,
+    raw: string,
+    kind: "int" | "float",
+  ) {
+    const parsed = kind === "int" ? parseInt(raw, 10) : parseFloat(raw);
+    setLeagueSetting(key, (Number.isNaN(parsed) ? 0 : parsed) as never);
+  }
+
+  const columns = useMemo<ColumnDef<PlayerAuctionRecord>[]>(
     () => [
       {
         id: "rank",
@@ -124,15 +115,8 @@ export default function HomePage() {
         header: "Player",
       },
       {
-        accessorKey: "games_played",
-        header: "GP",
-        cell: ({ getValue }) => (
-          <div className="text-right">{getValue() as number}</div>
-        ),
-      },
-      {
-        accessorKey: "total_fantasy_pts",
-        header: () => <div className="text-right">Total FP</div>,
+        accessorKey: "total_weighted_points",
+        header: () => <div className="text-right">Weighted Pts</div>,
         cell: ({ getValue }) => (
           <div className="text-right font-mono">
             {(getValue() as number).toFixed(2)}
@@ -140,11 +124,29 @@ export default function HomePage() {
         ),
       },
       {
-        accessorKey: "avg_fantasy_pts",
-        header: () => <div className="text-right">Avg FP</div>,
+        accessorKey: "total_accumulated_vorp",
+        header: () => <div className="text-right">Total VORP</div>,
         cell: ({ getValue }) => (
           <div className="text-right font-mono">
             {(getValue() as number).toFixed(2)}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "adjusted_vorp",
+        header: () => <div className="text-right">Adj. VORP</div>,
+        cell: ({ getValue }) => (
+          <div className="text-right font-mono">
+            {(getValue() as number).toFixed(2)}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "auction_value",
+        header: () => <div className="text-right">Auction $</div>,
+        cell: ({ getValue }) => (
+          <div className="text-right font-mono font-semibold">
+            ${(getValue() as number).toFixed(2)}
           </div>
         ),
       },
@@ -190,61 +192,26 @@ export default function HomePage() {
             </Select>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-mono text-muted-foreground">
-              Date Range
-            </label>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-mono text-muted-foreground">
-                Date Range
+          {LEAGUE_SETTING_FIELDS.map(({ key, label, step, kind }) => (
+            <div key={key} className="flex flex-col gap-1">
+              <label
+                htmlFor={`league-${key}`}
+                className="text-xs font-mono text-muted-foreground"
+              >
+                {label}
               </label>
-              <Popover>
-                <PopoverTrigger
-                  render={
-                    <Button
-                      variant="outline"
-                      className="h-8 justify-start text-left text-sm font-normal"
-                    />
-                  }
-                >
-                  <CalendarIcon className="mr-2 h-3.5 w-3.5" />
-                  {dateRange.startDate ? (
-                    dateRange.endDate ? (
-                      <>
-                        {format(parseISODate(dateRange.startDate), "MMM d, yyyy")} –{" "}
-                        {format(parseISODate(dateRange.endDate), "MMM d, yyyy")}
-                      </>
-                    ) : (
-                      format(parseISODate(dateRange.startDate), "MMM d, yyyy")
-                    )
-                  ) : (
-                    <span>Full Season</span>
-                  )}
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="range"
-                    selected={contextRangeToPicker(dateRange)}
-                    onSelect={(range) =>
-                      setDateRange({
-                        startDate: range?.from ? toApiDateString(range.from) : null,
-                        endDate: range?.to ? toApiDateString(range.to) : null,
-                      })
-                    }
-                    numberOfMonths={2}
-                    autoFocus
-                  />
-                  {dateRange.startDate && (
-                    <div className="border-t p-2">
-                      <Button variant="ghost" size="sm" onClick={clearDateRange}>
-                        Clear dates
-                      </Button>
-                    </div>
-                  )}
-                </PopoverContent>
-              </Popover>
+              <Input
+                id={`league-${key}`}
+                type="number"
+                step={step}
+                value={leagueSettings[key]}
+                onChange={(e) =>
+                  handleLeagueSettingChange(key, e.target.value, kind)
+                }
+                className="h-8 w-[110px] font-mono text-sm"
+              />
             </div>
-          </div>
+          ))}
         </div>
 
         <div className="flex flex-col gap-1">
@@ -278,33 +245,20 @@ export default function HomePage() {
 
       {/* ---------- Filter Controls Toolbar ---------- */}
       <div className="flex items-center gap-3">
-        <Select
-          value={sortBy}
-          onValueChange={(v) => setSortBy(v as "total" | "avg")}
-        >
-          <SelectTrigger className="h-9 w-[160px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="total">Sort: Total Points</SelectItem>
-            <SelectItem value="avg">Sort: Avg Points</SelectItem>
-          </SelectContent>
-        </Select>
-
         <Button onClick={generate}>
           {isFetching && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Generate
         </Button>
 
-        <Link href="/auction" className="ml-auto">
-          <Button variant="secondary">View Auction Values</Button>
+        <Link href="/" className="ml-auto">
+          <Button variant="secondary">View Leaderboard</Button>
         </Link>
       </div>
 
       {/* ---------- Error State ---------- */}
       {isError && (
         <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-          {error instanceof Error ? error.message : "Failed to load leaderboard."}
+          {error instanceof Error ? error.message : "Failed to load auction values."}
         </div>
       )}
 
@@ -334,7 +288,7 @@ export default function HomePage() {
                   colSpan={columns.length}
                   className="h-24 text-center text-muted-foreground"
                 >
-                  Set your weights and click Generate to load the leaderboard.
+                  Set your league settings and click Generate to calculate auction values.
                 </TableCell>
               </TableRow>
             ) : isPending ? (
