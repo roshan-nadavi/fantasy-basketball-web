@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { format } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import {
@@ -10,10 +9,9 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { CalendarIcon, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { CalendarIcon, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
@@ -35,6 +33,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { NumberStepper } from "@/components/ui/number-stepper";
+import { PageHeader } from "@/components/layout/page-header";
 
 import {
   useFantasyConfig,
@@ -112,6 +112,10 @@ export default function HomePage() {
     sortBy,
   });
 
+  function handleWeightChange(stat: keyof ScoringWeights, value: number) {
+    setWeight(stat, Math.round(value * 100) / 100);
+  }
+
   const columns = useMemo<ColumnDef<BasePlayerRecord>[]>(
     () => [
       {
@@ -166,6 +170,8 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col gap-4 p-6">
+      <PageHeader active="leaderboard" />
+
       {/* ---------- Settings Header ---------- */}
       <div className="rounded-lg border bg-card p-4 flex flex-col gap-4">
         <div className="flex flex-wrap items-end gap-4">
@@ -194,56 +200,51 @@ export default function HomePage() {
             <label className="text-xs font-mono text-muted-foreground">
               Date Range
             </label>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-mono text-muted-foreground">
-                Date Range
-              </label>
-              <Popover>
-                <PopoverTrigger
-                  render={
-                    <Button
-                      variant="outline"
-                      className="h-8 justify-start text-left text-sm font-normal"
-                    />
-                  }
-                >
-                  <CalendarIcon className="mr-2 h-3.5 w-3.5" />
-                  {dateRange.startDate ? (
-                    dateRange.endDate ? (
-                      <>
-                        {format(parseISODate(dateRange.startDate), "MMM d, yyyy")} –{" "}
-                        {format(parseISODate(dateRange.endDate), "MMM d, yyyy")}
-                      </>
-                    ) : (
-                      format(parseISODate(dateRange.startDate), "MMM d, yyyy")
-                    )
-                  ) : (
-                    <span>Full Season</span>
-                  )}
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="range"
-                    selected={contextRangeToPicker(dateRange)}
-                    onSelect={(range) =>
-                      setDateRange({
-                        startDate: range?.from ? toApiDateString(range.from) : null,
-                        endDate: range?.to ? toApiDateString(range.to) : null,
-                      })
-                    }
-                    numberOfMonths={2}
-                    autoFocus
+            <Popover>
+              <PopoverTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    className="h-8 justify-start text-left text-sm font-normal"
                   />
-                  {dateRange.startDate && (
-                    <div className="border-t p-2">
-                      <Button variant="ghost" size="sm" onClick={clearDateRange}>
-                        Clear dates
-                      </Button>
-                    </div>
-                  )}
-                </PopoverContent>
-              </Popover>
-            </div>
+                }
+              >
+                <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                {dateRange.startDate ? (
+                  dateRange.endDate ? (
+                    <>
+                      {format(parseISODate(dateRange.startDate), "MMM d, yyyy")} –{" "}
+                      {format(parseISODate(dateRange.endDate), "MMM d, yyyy")}
+                    </>
+                  ) : (
+                    format(parseISODate(dateRange.startDate), "MMM d, yyyy")
+                  )
+                ) : (
+                  <span>Full Season</span>
+                )}
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="range"
+                  selected={contextRangeToPicker(dateRange)}
+                  onSelect={(range) =>
+                    setDateRange({
+                      startDate: range?.from ? toApiDateString(range.from) : null,
+                      endDate: range?.to ? toApiDateString(range.to) : null,
+                    })
+                  }
+                  numberOfMonths={2}
+                  autoFocus
+                />
+                {dateRange.startDate && (
+                  <div className="border-t p-2">
+                    <Button variant="ghost" size="sm" onClick={clearDateRange}>
+                      Clear dates
+                    </Button>
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
 
@@ -251,7 +252,7 @@ export default function HomePage() {
           <label className="text-xs font-mono text-muted-foreground">
             Scoring Weights
           </label>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-8">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {WEIGHT_FIELDS.map((stat) => (
               <div key={stat} className="flex flex-col gap-1">
                 <label
@@ -260,15 +261,11 @@ export default function HomePage() {
                 >
                   {stat}
                 </label>
-                <Input
+                <NumberStepper
                   id={`weight-${stat}`}
-                  type="number"
-                  step="0.1"
                   value={weights[stat]}
-                  onChange={(e) =>
-                    setWeight(stat, parseFloat(e.target.value) || 0)
-                  }
-                  className="h-8 font-mono text-sm"
+                  onChange={(v) => handleWeightChange(stat, v)}
+                  step={1}
                 />
               </div>
             ))}
@@ -295,10 +292,6 @@ export default function HomePage() {
           {isFetching && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Generate
         </Button>
-
-        <Link href="/auction" className="ml-auto">
-          <Button variant="secondary">View Auction Values</Button>
-        </Link>
       </div>
 
       {/* ---------- Error State ---------- */}

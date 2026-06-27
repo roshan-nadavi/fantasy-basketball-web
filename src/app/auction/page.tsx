@@ -1,17 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
   type ColumnDef,
   flexRender,
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -27,6 +25,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { NumberStepper } from "@/components/ui/number-stepper";
+import { PageHeader } from "@/components/layout/page-header";
+import { cn } from "@/lib/utils";
 
 import {
   useFantasyConfig,
@@ -45,22 +46,20 @@ const WEIGHT_FIELDS: (keyof ScoringWeights)[] = [
   "OREB", "DREB", "REB", "AST", "STL", "BLK", "TOV", "PF", "PTS",
 ];
 
-// Mirrors PrecisionAuctionConfig in main.py. `kind` controls whether the
-// input parses with parseInt or parseFloat — pydantic's lax mode would
-// accept either, but keeping team/roster counts as clean integers avoids
-// confusing fractional values in the UI.
+// `kind` controls rounding after a step click: int fields snap to whole
+// numbers, float fields keep two decimal places. NumberStepper itself
+// always steps by a flat 1 / -1 regardless of kind.
 const LEAGUE_SETTING_FIELDS: {
   key: keyof LeagueSettings;
   label: string;
-  step: string;
   kind: "int" | "float";
 }[] = [
-  { key: "num_teams", label: "Teams", step: "1", kind: "int" },
-  { key: "roster_size", label: "Roster Size", step: "1", kind: "int" },
-  { key: "total_budget_per_team", label: "Budget / Team", step: "1", kind: "float" },
-  { key: "regular_weeks", label: "Regular Weeks", step: "1", kind: "int" },
-  { key: "playoff_weeks", label: "Playoff Weeks", step: "1", kind: "int" },
-  { key: "post_season_weightage", label: "Playoff Weight", step: "0.1", kind: "float" },
+  { key: "num_teams", label: "Teams", kind: "int" },
+  { key: "roster_size", label: "Roster Size", kind: "int" },
+  { key: "total_budget_per_team", label: "Budget / Team", kind: "float" },
+  { key: "regular_weeks", label: "Regular Weeks", kind: "int" },
+  { key: "playoff_weeks", label: "Playoff Weeks", kind: "int" },
+  { key: "post_season_weightage", label: "Playoff Weight", kind: "float" },
 ];
 
 export default function AuctionPage() {
@@ -94,13 +93,17 @@ export default function AuctionPage() {
     offset,
   });
 
+  function handleWeightChange(stat: keyof ScoringWeights, value: number) {
+    setWeight(stat, Math.round(value * 100) / 100);
+  }
+
   function handleLeagueSettingChange(
     key: keyof LeagueSettings,
-    raw: string,
+    value: number,
     kind: "int" | "float",
   ) {
-    const parsed = kind === "int" ? parseInt(raw, 10) : parseFloat(raw);
-    setLeagueSetting(key, (Number.isNaN(parsed) ? 0 : parsed) as never);
+    const rounded = kind === "int" ? Math.round(value) : Math.round(value * 100) / 100;
+    setLeagueSetting(key, rounded as never);
   }
 
   const columns = useMemo<ColumnDef<PlayerAuctionRecord>[]>(
@@ -126,26 +129,42 @@ export default function AuctionPage() {
       {
         accessorKey: "total_accumulated_vorp",
         header: () => <div className="text-right">Total VORP</div>,
-        cell: ({ getValue }) => (
-          <div className="text-right font-mono">
-            {(getValue() as number).toFixed(2)}
-          </div>
-        ),
+        cell: ({ getValue }) => {
+          const v = getValue() as number;
+          return (
+            <div
+              className={cn(
+                "text-right font-mono",
+                v > 0 ? "text-money" : "text-muted-foreground",
+              )}
+            >
+              {v.toFixed(2)}
+            </div>
+          );
+        },
       },
       {
         accessorKey: "adjusted_vorp",
         header: () => <div className="text-right">Adj. VORP</div>,
-        cell: ({ getValue }) => (
-          <div className="text-right font-mono">
-            {(getValue() as number).toFixed(2)}
-          </div>
-        ),
+        cell: ({ getValue }) => {
+          const v = getValue() as number;
+          return (
+            <div
+              className={cn(
+                "text-right font-mono",
+                v > 0 ? "text-money" : "text-muted-foreground",
+              )}
+            >
+              {v.toFixed(2)}
+            </div>
+          );
+        },
       },
       {
         accessorKey: "auction_value",
         header: () => <div className="text-right">Auction $</div>,
         cell: ({ getValue }) => (
-          <div className="text-right font-mono font-semibold">
+          <div className="text-right font-mono font-semibold text-money">
             ${(getValue() as number).toFixed(2)}
           </div>
         ),
@@ -168,6 +187,8 @@ export default function AuctionPage() {
 
   return (
     <div className="flex flex-col gap-4 p-6">
+      <PageHeader active="auction" />
+
       {/* ---------- Settings Header ---------- */}
       <div className="rounded-lg border bg-card p-4 flex flex-col gap-4">
         <div className="flex flex-wrap items-end gap-4">
@@ -192,7 +213,7 @@ export default function AuctionPage() {
             </Select>
           </div>
 
-          {LEAGUE_SETTING_FIELDS.map(({ key, label, step, kind }) => (
+          {LEAGUE_SETTING_FIELDS.map(({ key, label, kind }) => (
             <div key={key} className="flex flex-col gap-1">
               <label
                 htmlFor={`league-${key}`}
@@ -200,15 +221,12 @@ export default function AuctionPage() {
               >
                 {label}
               </label>
-              <Input
+              <NumberStepper
                 id={`league-${key}`}
-                type="number"
-                step={step}
                 value={leagueSettings[key]}
-                onChange={(e) =>
-                  handleLeagueSettingChange(key, e.target.value, kind)
-                }
-                className="h-8 w-[110px] font-mono text-sm"
+                onChange={(v) => handleLeagueSettingChange(key, v, kind)}
+                step={1}
+                className="w-[130px]"
               />
             </div>
           ))}
@@ -218,7 +236,7 @@ export default function AuctionPage() {
           <label className="text-xs font-mono text-muted-foreground">
             Scoring Weights
           </label>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-8">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {WEIGHT_FIELDS.map((stat) => (
               <div key={stat} className="flex flex-col gap-1">
                 <label
@@ -227,15 +245,11 @@ export default function AuctionPage() {
                 >
                   {stat}
                 </label>
-                <Input
+                <NumberStepper
                   id={`weight-${stat}`}
-                  type="number"
-                  step="0.1"
                   value={weights[stat]}
-                  onChange={(e) =>
-                    setWeight(stat, parseFloat(e.target.value) || 0)
-                  }
-                  className="h-8 font-mono text-sm"
+                  onChange={(v) => handleWeightChange(stat, v)}
+                  step={1}
                 />
               </div>
             ))}
@@ -249,10 +263,6 @@ export default function AuctionPage() {
           {isFetching && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Generate
         </Button>
-
-        <Link href="/" className="ml-auto">
-          <Button variant="secondary">View Leaderboard</Button>
-        </Link>
       </div>
 
       {/* ---------- Error State ---------- */}
