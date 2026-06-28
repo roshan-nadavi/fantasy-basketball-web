@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
+import { useRouter } from "next/navigation";
 import type { DateRange } from "react-day-picker";
 import {
   type ColumnDef,
@@ -9,7 +10,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { CalendarIcon, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarIcon, Loader2, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -54,8 +55,7 @@ const WEIGHT_FIELDS: (keyof ScoringWeights)[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Date helpers — context stores "YYYY-MM-DD" strings, the Calendar widget
-// works in local Date objects, so we convert at the boundary.
+// Date helpers
 // ---------------------------------------------------------------------------
 
 function parseISODate(value: string): Date {
@@ -79,6 +79,8 @@ function contextRangeToPicker(range: DateRangeState): DateRange | undefined {
 }
 
 export default function HomePage() {
+  const router = useRouter();
+
   const {
     season,
     setSeason,
@@ -95,9 +97,6 @@ export default function HomePage() {
   const [offset, setOffset] = useState(0);
   const [sortBy, setSortBy] = useState<"total" | "avg">("total");
 
-  // Season and date-range edits only take effect once `generate()` snapshots
-  // them into `appliedConfig` (bumping `generationCount`), so offset only
-  // needs to reset off generationCount + the locally-immediate sortBy state.
   useEffect(() => {
     setOffset(0);
   }, [generationCount, sortBy]);
@@ -116,29 +115,48 @@ export default function HomePage() {
     setWeight(stat, Math.round(value * 100) / 100);
   }
 
+  function handleViewPlayer(playerId: number, playerName: string) {
+    router.push(`/player/${playerId}?name=${encodeURIComponent(playerName)}`);
+  }
+
   const columns = useMemo<ColumnDef<BasePlayerRecord>[]>(
     () => [
       {
         id: "rank",
         header: "#",
-        cell: ({ row }) => offset + row.index + 1,
+        cell: ({ row }) => (
+          <div className="tabular-nums">{offset + row.index + 1}</div>
+        ),
       },
       {
         accessorKey: "PLAYER_NAME",
         header: "Player",
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <span>{row.original.PLAYER_NAME}</span>
+            <Button
+              size="xs"
+              onClick={() => handleViewPlayer(row.original.PLAYER_ID, row.original.PLAYER_NAME)}
+              title="View full season stats"
+            >
+              <ExternalLink className="h-2.5 w-2.5" />
+              Stats
+            </Button>
+          </div>
+        ),
       },
       {
         accessorKey: "games_played",
-        header: "GP",
+        header: () => <div className="text-right">GP</div>,
         cell: ({ getValue }) => (
-          <div className="text-right">{getValue() as number}</div>
+          <div className="text-right tabular-nums">{getValue() as number}</div>
         ),
       },
       {
         accessorKey: "total_fantasy_pts",
         header: () => <div className="text-right">Total FP</div>,
         cell: ({ getValue }) => (
-          <div className="text-right font-mono">
+          <div className="text-right font-mono tabular-nums">
             {(getValue() as number).toFixed(2)}
           </div>
         ),
@@ -147,12 +165,13 @@ export default function HomePage() {
         accessorKey: "avg_fantasy_pts",
         header: () => <div className="text-right">Avg FP</div>,
         cell: ({ getValue }) => (
-          <div className="text-right font-mono">
+          <div className="text-right font-mono tabular-nums">
             {(getValue() as number).toFixed(2)}
           </div>
         ),
       },
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [offset],
   );
 

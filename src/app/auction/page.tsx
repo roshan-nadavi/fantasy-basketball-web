@@ -7,7 +7,8 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -46,9 +47,6 @@ const WEIGHT_FIELDS: (keyof ScoringWeights)[] = [
   "OREB", "DREB", "REB", "AST", "STL", "BLK", "TOV", "PF", "PTS",
 ];
 
-// `kind` controls rounding after a step click: int fields snap to whole
-// numbers, float fields keep two decimal places. NumberStepper itself
-// always steps by a flat 1 / -1 regardless of kind.
 const LEAGUE_SETTING_FIELDS: {
   key: keyof LeagueSettings;
   label: string;
@@ -63,6 +61,8 @@ const LEAGUE_SETTING_FIELDS: {
 ];
 
 export default function AuctionPage() {
+  const router = useRouter();
+
   const {
     season,
     setSeason,
@@ -77,9 +77,6 @@ export default function AuctionPage() {
 
   const [offset, setOffset] = useState(0);
 
-  // Same edge-case rule as the Home Page: changing inputs alone does nothing
-  // until Generate snapshots them into appliedConfig — so offset resets off
-  // generationCount, not off the live draft values.
   useEffect(() => {
     setOffset(0);
   }, [generationCount]);
@@ -106,52 +103,54 @@ export default function AuctionPage() {
     setLeagueSetting(key, rounded as never);
   }
 
+  function handleViewPlayer(playerId: number, playerName: string) {
+    router.push(`/player/${playerId}?name=${encodeURIComponent(playerName)}`);
+  }
+
   const columns = useMemo<ColumnDef<PlayerAuctionRecord>[]>(
     () => [
       {
         id: "rank",
         header: "#",
-        cell: ({ row }) => offset + row.index + 1,
+        cell: ({ row }) => (
+          <div className="tabular-nums">{offset + row.index + 1}</div>
+        ),
       },
       {
         accessorKey: "PLAYER_NAME",
         header: "Player",
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <span>{row.original.PLAYER_NAME}</span>
+            <Button
+              size="xs"
+              onClick={() => handleViewPlayer(row.original.PLAYER_ID, row.original.PLAYER_NAME)}
+              title="View full season stats"
+            >
+              <ExternalLink className="h-2.5 w-2.5" />
+              Stats
+            </Button>
+          </div>
+        ),
       },
       {
         accessorKey: "total_weighted_points",
         header: () => <div className="text-right">Weighted Pts</div>,
         cell: ({ getValue }) => (
-          <div className="text-right font-mono">
+          <div className="text-right font-mono tabular-nums">
             {(getValue() as number).toFixed(2)}
           </div>
         ),
       },
       {
         accessorKey: "total_accumulated_vorp",
-        header: () => <div className="text-right">Total VORP</div>,
+        header: () => <div className="text-right">VORP</div>,
         cell: ({ getValue }) => {
           const v = getValue() as number;
           return (
             <div
               className={cn(
-                "text-right font-mono",
-                v > 0 ? "text-money" : "text-muted-foreground",
-              )}
-            >
-              {v.toFixed(2)}
-            </div>
-          );
-        },
-      },
-      {
-        accessorKey: "adjusted_vorp",
-        header: () => <div className="text-right">Adj. VORP</div>,
-        cell: ({ getValue }) => {
-          const v = getValue() as number;
-          return (
-            <div
-              className={cn(
-                "text-right font-mono",
+                "text-right font-mono tabular-nums",
                 v > 0 ? "text-money" : "text-muted-foreground",
               )}
             >
@@ -164,7 +163,7 @@ export default function AuctionPage() {
         accessorKey: "auction_value",
         header: () => <div className="text-right">Auction $</div>,
         cell: ({ getValue }) => (
-          <div className="text-right font-mono font-semibold text-money">
+          <div className="text-right font-mono font-semibold tabular-nums text-money">
             ${(getValue() as number).toFixed(2)}
           </div>
         ),

@@ -48,7 +48,7 @@ export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
   BLK: 4,
   TOV: -2,
   PF: 0,
-  PTS: 0,
+  PTS: 1,
 };
 
 export interface DateRangeState {
@@ -71,7 +71,7 @@ export interface LeagueSettings {
 
 export const DEFAULT_LEAGUE_SETTINGS: LeagueSettings = {
   regular_weeks: 20,
-  playoff_weeks: 4,
+  playoff_weeks: 3,
   post_season_weightage: 2.5,
   num_teams: 10,
   roster_size: 13,
