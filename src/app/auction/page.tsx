@@ -39,7 +39,7 @@ import {
 import { useAuctionValues } from "@/hooks/use-auction-values";
 import type { PlayerAuctionRecord } from "@/types/fantasy";
 
-const LIMIT = 50;
+const LIMIT = 150;
 
 const WEIGHT_FIELDS: (keyof ScoringWeights)[] = [
   "FGM", "FGA", "FG3M", "FG3A", "FTM", "FTA",

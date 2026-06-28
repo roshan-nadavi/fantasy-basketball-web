@@ -31,23 +31,24 @@ export interface ScoringWeights {
   PTS: number;
 }
 
-// Defaults taken directly from `class ScoringWeights(BaseModel)` in main.py
+// Defaults taken directly from `class ScoringWeights(BaseModel)` in main.py,
+// with user-specified overrides applied.
 export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
-  FGM: 0,
-  FGA: 0,
-  FG3M: 0,
+  FGM: 2,
+  FGA: -1,
+  FG3M: 1,
   FG3A: 0,
-  FTM: 0,
-  FTA: 0,
+  FTM: 1,
+  FTA: -1,
   OREB: 0,
   DREB: 0,
-  REB: 1.2,
-  AST: 1.5,
-  STL: 3.0,
-  BLK: 3.0,
-  TOV: -1.0,
+  REB: 1,
+  AST: 2,
+  STL: 4,
+  BLK: 4,
+  TOV: -2,
   PF: 0,
-  PTS: 1.0,
+  PTS: 0,
 };
 
 export interface DateRangeState {
@@ -71,7 +72,7 @@ export interface LeagueSettings {
 export const DEFAULT_LEAGUE_SETTINGS: LeagueSettings = {
   regular_weeks: 20,
   playoff_weeks: 4,
-  post_season_weightage: 1.5,
+  post_season_weightage: 2.5,
   num_teams: 10,
   roster_size: 13,
   total_budget_per_team: 200.0,
@@ -80,10 +81,10 @@ export const DEFAULT_LEAGUE_SETTINGS: LeagueSettings = {
 // Seasons available on disk, derived from the parquet filenames the backend
 // loads at startup. Keys must match the `season_key` the backend builds via
 // f"{parts[1]}_{parts[2]}" in main.py's lifespan handler.
-export const AVAILABLE_SEASONS = ["2025_26", "2024_25", "2023_24"] as const;
+export const AVAILABLE_SEASONS = ["2025-26", "2024-25", "2023-24","2022-23"] as const;
 export type Season = (typeof AVAILABLE_SEASONS)[number];
 
-const DEFAULT_SEASON: Season = "2025_26";
+const DEFAULT_SEASON: Season = "2025-26";
 
 // ---------------------------------------------------------------------------
 // Context shape

@@ -46,7 +46,7 @@ import {
 import { useLeaderboard } from "@/hooks/use-leaderboard";
 import type { BasePlayerRecord } from "@/types/fantasy";
 
-const LIMIT = 50;
+const LIMIT = 150;
 
 const WEIGHT_FIELDS: (keyof ScoringWeights)[] = [
   "FGM", "FGA", "FG3M", "FG3A", "FTM", "FTA",
